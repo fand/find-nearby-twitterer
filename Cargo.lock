@@ -126,8 +126,13 @@ name = "follower-sorter"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64 0.12.3",
+ "chrono",
+ "hmac-sha1",
  "kuon",
+ "percent-encoding",
  "reqwest",
+ "serde",
  "tokio",
 ]
 
@@ -771,6 +776,9 @@ name = "serde"
 version = "1.0.144"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0f747710de3dcd43b88c9168773254e809d8ddbdf9653b84e2554ab219f17860"
+dependencies = [
+ "serde_derive",
+]
 
 [[package]]
 name = "serde_derive"
