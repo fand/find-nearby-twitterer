@@ -52,21 +52,21 @@ pub struct Signature {
 pub fn make_signature<'a>(
     url: &str,
     method: &str,
-    api_key: String,
-    api_key_secret: String,
-    access_token: String,
-    access_token_secret: String,
+    api_key: &String,
+    access_token: &String,
+    api_key_secret: &String,
+    access_token_secret: &String,
     body: &Vec<(&'static str, &'static str)>,
 ) -> Signature {
     let timestamp = Utc::now().timestamp().to_string();
 
     let mut params: HashMap<&str, &str> = HashMap::new();
-    params.insert("oauth_consumer_key", &api_key);
+    params.insert("oauth_consumer_key", api_key);
     params.insert("oauth_nonce", &timestamp);
     params.insert("oauth_timestamp", &timestamp);
     params.insert("oauth_signature_method", "HMAC-SHA1");
     params.insert("oauth_version", "1.0");
-    params.insert("oauth_token", &access_token);
+    params.insert("oauth_token", access_token);
 
     for (k, v) in body {
         params.insert(k, v);
@@ -76,7 +76,7 @@ pub fn make_signature<'a>(
 
     let signature_base_string = make_signature_base_string(method, url, &parameter_string);
 
-    let signature_key = make_signature_key(&api_key_secret, &access_token_secret);
+    let signature_key = make_signature_key(api_key_secret, access_token_secret);
 
     let signature = encode_signature(&signature_key, &signature_base_string);
 
