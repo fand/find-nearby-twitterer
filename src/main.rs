@@ -16,6 +16,12 @@ struct UserJSON {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+struct TimelineTweetJSON {
+    id: String,
+    text: String,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 struct DataJSON<T> {
     data: T,
 }
@@ -77,7 +83,7 @@ impl Twit {
         res.data
     }
 
-    pub async fn get_timeline(&self, user_id: String) -> String {
+    pub async fn get_timeline(&self, user_id: String) -> Vec<TimelineTweetJSON> {
         // let url = format!("https://api.twitter.com/2/user_timeline",);
         let url_string = format!(
             "https://api.twitter.com/2/users/{}/timelines/reverse_chronological",
@@ -102,7 +108,15 @@ impl Twit {
             .header(AUTHORIZATION, &signature.auth_header)
             .form(&body);
 
-        client.send().await.unwrap().text().await.unwrap()
+        let res = client
+            .send()
+            .await
+            .unwrap()
+            .json::<DataJSON<Vec<TimelineTweetJSON>>>()
+            .await
+            .unwrap();
+
+        res.data
     }
 }
 
@@ -116,7 +130,10 @@ async fn main() -> Result<()> {
     );
     let user = twit.get_user("amagitakayosi").await;
     let timeline = twit.get_timeline(user.id).await;
-    println!("{}", timeline);
+
+    for tweet in timeline {
+        println!("{}", tweet.text);
+    }
 
     Ok(())
 }
