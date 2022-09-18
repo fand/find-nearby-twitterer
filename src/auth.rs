@@ -56,7 +56,7 @@ pub fn make_signature<'a>(
     access_token: &String,
     api_key_secret: &String,
     access_token_secret: &String,
-    body: &Vec<(&'static str, &'static str)>,
+    body: &Vec<(&str, &str)>,
 ) -> Signature {
     let timestamp = Utc::now().timestamp().to_string();
 
