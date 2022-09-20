@@ -6,6 +6,10 @@ use reqwest::{Client, Response};
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use serde_json;
+
+use std::fs::File;
+use std::io::prelude::*;
 
 use async_recursion::async_recursion;
 
@@ -136,36 +140,29 @@ impl Twit {
             body_with_token.insert("pagination_token", &k);
         }
 
-        sleep(Duration::from_millis(5000)).await;
-
-        let res = self
+        let res_json = self
             .fetch(method, url_string, &body_with_token)
             .await
             .text()
             .await
             .unwrap();
-        println!("{}", res);
 
-        sleep(Duration::from_millis(5000)).await;
+        // println!("{}", res_json);
 
-        let res = self
-            .fetch(method, url_string, &body_with_token)
-            .await
-            .json::<DataJSON<Vec<T>>>()
-            .await
-            .unwrap();
-
+        let res: DataJSON<Vec<T>> = serde_json::from_str(&res_json).unwrap();
         let mut head = res.data;
 
-        match res.meta {
-            Some(meta) => {
+        sleep(Duration::from_millis(3000)).await;
+
+        match res.meta.map(|m| m.next_token) {
+            Some(Some(next_token)) => {
                 let r = self
-                    .fetch_json_with_token::<T>(method, url_string, body, meta.next_token.as_ref())
+                    .fetch_json_with_token::<T>(method, url_string, body, Some(next_token).as_ref())
                     .await;
                 head.extend(r);
                 head
             }
-            None => head,
+            _ => head,
         }
     }
 
@@ -219,7 +216,7 @@ async fn main() -> Result<()> {
         std::env::var("TWITTER_API_KEY_SECRET").unwrap(),
         std::env::var("TWITTER_ACCESS_TOKEN_SECRET").unwrap(),
     );
-    let user = twit.get_user("amagitakayosi").await;
+    // let user = twit.get_user("amagitakayosi").await;
 
     // Show user's home timeline
     // let timeline = twit.get_timeline(user.id).await;
@@ -227,12 +224,18 @@ async fn main() -> Result<()> {
     //     println!("{}", tweet.text);
     // }
 
-    // Get followers of the user
-    let followers = twit.get_followers(&user.id).await;
-    println!(">> Followers count: {}", followers.len());
-    for f in followers {
-        println!("{} (@{})", f.name, f.username);
-    }
+    // // Get followers of the user
+    // let followers = twit.get_followers(&user.id).await;
+    // let followers_json = serde_json::to_string(&followers)?;
+    // let mut file = File::create("followers.json")?;
+    // file.write_all(followers_json.as_bytes())?;
+
+    // Read followers from JSON
+    let file = File::open("followers.json")?;
+    let mut contents = String::new();
+    file.read_to_string(&mut contents);
+
+    println!("{}", contents);
 
     Ok(())
 }
