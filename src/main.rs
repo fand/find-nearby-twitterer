@@ -26,6 +26,8 @@ struct UserJSON {
     id: String,
     name: String,
     username: String,
+    location: Option<String>,
+    description: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -179,13 +181,13 @@ impl Twit {
             .await
     }
 
-    pub async fn get_user(&self, screen_name: &str) -> UserJSON {
+    pub async fn get_user(&self, screen_name: &str, body: &HashMap<&str, &str>) -> UserJSON {
         let url_string = format!(
             "https://api.twitter.com/2/users/by/username/{}",
             screen_name
         );
         let res = self
-            .fetch_json::<DataJSON<UserJSON>>("GET", &url_string, &HashMap::new())
+            .fetch_json::<DataJSON<UserJSON>>("GET", &url_string, body)
             .await;
         res.data
     }
@@ -203,8 +205,12 @@ impl Twit {
 
     pub async fn get_followers(&self, user_id: &String) -> Vec<UserJSON> {
         let url_string = format!("https://api.twitter.com/2/users/{}/followers", user_id);
-        self.fetch_json_all::<UserJSON>("GET", &url_string, &hashmap! { "max_results" => "1000" })
-            .await
+        self.fetch_json_all::<UserJSON>(
+            "GET",
+            &url_string,
+            &hashmap! { "max_results" => "1000", "user.fields" => "id,name,username,location,description" },
+        )
+        .await
     }
 }
 
@@ -216,7 +222,13 @@ async fn main() -> Result<()> {
         std::env::var("TWITTER_API_KEY_SECRET").unwrap(),
         std::env::var("TWITTER_ACCESS_TOKEN_SECRET").unwrap(),
     );
-    // let user = twit.get_user("amagitakayosi").await;
+    let user = twit
+        .get_user(
+            "amagitakayosi",
+            &hashmap! {"user.fields" => "id,name,username,location"},
+        )
+        .await;
+    println!("{:?}", user);
 
     // Show user's home timeline
     // let timeline = twit.get_timeline(user.id).await;
@@ -224,18 +236,30 @@ async fn main() -> Result<()> {
     //     println!("{}", tweet.text);
     // }
 
-    // // Get followers of the user
-    // let followers = twit.get_followers(&user.id).await;
-    // let followers_json = serde_json::to_string(&followers)?;
-    // let mut file = File::create("followers.json")?;
-    // file.write_all(followers_json.as_bytes())?;
+    // Get followers of the user
+    let followers = twit.get_followers(&user.id).await;
+    let followers_json = serde_json::to_string(&followers)?;
+    let mut file = File::create("followers2.json")?;
+    file.write_all(followers_json.as_bytes())?;
 
     // Read followers from JSON
-    let file = File::open("followers.json")?;
-    let mut contents = String::new();
-    file.read_to_string(&mut contents);
+    // let mut file = File::open("followers.json")?;
+    // let mut contents = String::new();
+    // file.read_to_string(&mut contents)?;
+    // let followers: Vec<UserJSON> = serde_json::from_str(&contents)?;
 
-    println!("{}", contents);
+    // for f in &followers {
+    //     let follower = twit
+    //         .get_user(
+    //             &f.username,
+    //             &hashmap! {"user.fields" => "id,name,username,location"},
+    //         )
+    //         .await;
+    //     println!("{:?}", follower.location);
+
+    //     sleep(Duration::from_millis(1100)).await;
+    // }
+    // println!("{}", contents);
 
     Ok(())
 }
