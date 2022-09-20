@@ -7,6 +7,14 @@ use reqwest::{Client, Response};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
+use async_recursion::async_recursion;
+
+use std::collections::HashMap;
+#[macro_use]
+extern crate maplit;
+
+use tokio::time::{sleep, Duration};
+
 mod auth;
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -25,6 +33,14 @@ struct TimelineTweetJSON {
 #[derive(Serialize, Deserialize, Debug)]
 struct DataJSON<T> {
     data: T,
+    meta: Option<MetaJSON>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct MetaJSON {
+    result_count: Option<i64>,
+    previous_token: Option<String>,
+    next_token: Option<String>,
 }
 
 struct Twit {
@@ -49,10 +65,15 @@ impl Twit {
         }
     }
 
-    async fn fetch(&self, method: &str, url_string: &String, body: &Vec<(&str, &str)>) -> Response {
+    async fn fetch(
+        &self,
+        method: &str,
+        url_string: &String,
+        body: &HashMap<&str, &str>,
+    ) -> Response {
         let signature = auth::make_signature(
             url_string.as_str(),
-            "GET",
+            method,
             &self.api_key,
             &self.api_key_secret,
             &self.access_token,
@@ -69,7 +90,12 @@ impl Twit {
         client.send().await.unwrap()
     }
 
-    async fn fetch_json<T>(&self, method: &str, url_string: &String, body: &Vec<(&str, &str)>) -> T
+    async fn fetch_json<T>(
+        &self,
+        method: &str,
+        url_string: &String,
+        body: &HashMap<&str, &str>,
+    ) -> T
     where
         T: DeserializeOwned,
     {
@@ -84,7 +110,7 @@ impl Twit {
         &self,
         method: &str,
         url_string: &String,
-        body: &Vec<(&str, &str)>,
+        body: &HashMap<&str, &str>,
     ) -> String {
         self.fetch(method, url_string, body)
             .await
@@ -93,13 +119,76 @@ impl Twit {
             .unwrap()
     }
 
+    #[async_recursion(?Send)]
+    async fn fetch_json_with_token<T>(
+        &self,
+        method: &str,
+        url_string: &String,
+        body: &HashMap<&str, &str>,
+        pagenation_token: Option<&'async_recursion String>,
+    ) -> Vec<T>
+    where
+        T: DeserializeOwned,
+    {
+        let mut body_with_token = body.clone();
+        if let Some(k) = pagenation_token {
+            println!("pagenation token: {}", k);
+            body_with_token.insert("pagination_token", &k);
+        }
+
+        sleep(Duration::from_millis(5000)).await;
+
+        let res = self
+            .fetch(method, url_string, &body_with_token)
+            .await
+            .text()
+            .await
+            .unwrap();
+        println!("{}", res);
+
+        sleep(Duration::from_millis(5000)).await;
+
+        let res = self
+            .fetch(method, url_string, &body_with_token)
+            .await
+            .json::<DataJSON<Vec<T>>>()
+            .await
+            .unwrap();
+
+        let mut head = res.data;
+
+        match res.meta {
+            Some(meta) => {
+                let r = self
+                    .fetch_json_with_token::<T>(method, url_string, body, meta.next_token.as_ref())
+                    .await;
+                head.extend(r);
+                head
+            }
+            None => head,
+        }
+    }
+
+    async fn fetch_json_all<T>(
+        &self,
+        method: &str,
+        url_string: &String,
+        body: &HashMap<&str, &str>,
+    ) -> Vec<T>
+    where
+        T: DeserializeOwned,
+    {
+        self.fetch_json_with_token(method, url_string, body, None)
+            .await
+    }
+
     pub async fn get_user(&self, screen_name: &str) -> UserJSON {
         let url_string = format!(
             "https://api.twitter.com/2/users/by/username/{}",
             screen_name
         );
         let res = self
-            .fetch_json::<DataJSON<UserJSON>>("GET", &url_string, &vec![])
+            .fetch_json::<DataJSON<UserJSON>>("GET", &url_string, &HashMap::new())
             .await;
         res.data
     }
@@ -110,19 +199,15 @@ impl Twit {
             user_id
         );
         let res = self
-            .fetch_json::<DataJSON<Vec<TimelineTweetJSON>>>("GET", &url_string, &vec![])
+            .fetch_json::<DataJSON<Vec<TimelineTweetJSON>>>("GET", &url_string, &HashMap::new())
             .await;
         res.data
     }
 
-    pub async fn get_followers(&self, user_id: &String) -> String {
+    pub async fn get_followers(&self, user_id: &String) -> Vec<UserJSON> {
         let url_string = format!("https://api.twitter.com/2/users/{}/followers", user_id);
-        // let res = self
-        //     .fetch_json::<DataJSON<Vec<UserJSON>>>("GET", &url_string, &vec![])
-        //     .await;
-        // res.data
-        let res = self.fetch_text("GET", &url_string, &vec![]).await;
-        res
+        self.fetch_json_all::<UserJSON>("GET", &url_string, &hashmap! { "max_results" => "1000" })
+            .await
     }
 }
 
@@ -144,10 +229,10 @@ async fn main() -> Result<()> {
 
     // Get followers of the user
     let followers = twit.get_followers(&user.id).await;
-    println!("{}", followers);
-    // for f in followers {
-    //     println!("{} (@{})", f.name, f.username);
-    // }
+    println!(">> Followers count: {}", followers.len());
+    for f in followers {
+        println!("{} (@{})", f.name, f.username);
+    }
 
     Ok(())
 }
