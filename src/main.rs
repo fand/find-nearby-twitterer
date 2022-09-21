@@ -3,6 +3,7 @@ extern crate maplit;
 extern crate reqwest;
 use anyhow::Result;
 use async_recursion::async_recursion;
+use clap::{App, Arg, SubCommand};
 use colored::*;
 use regex::Regex;
 use reqwest::{header::AUTHORIZATION, Url};
@@ -251,40 +252,52 @@ fn env(key: &str) -> String {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let twit = Twit::new(
-        env("TWITTER_API_KEY"),
-        env("TWITTER_ACCESS_TOKEN"),
-        env("TWITTER_API_KEY_SECRET"),
-        env("TWITTER_ACCESS_TOKEN_SECRET"),
-    );
+    let app = initialize_app();
+    let matches = app.get_matches();
+    if let Some(matches) = matches.subcommand_matches("following") {
+        println!("following {:?}", matches);
+    }
+    if let Some(matches) = matches.subcommand_matches("follower") {
+        println!("follower {:?}", matches);
+    }
+    if let Some(matches) = matches.subcommand_matches("list") {
+        println!("list {:?}", matches);
+    }
 
-    let user = twit
-        .get_user(
-            "amagitakayosi",
-            &hashmap! {"user.fields" => "id,name,username,location"},
-        )
-        .await;
+    // let twit = Twit::new(
+    //     env("TWITTER_API_KEY"),
+    //     env("TWITTER_ACCESS_TOKEN"),
+    //     env("TWITTER_API_KEY_SECRET"),
+    //     env("TWITTER_ACCESS_TOKEN_SECRET"),
+    // );
 
-    // Show user profile
-    // println!("{:?}", user);
+    // let user = twit
+    //     .get_user(
+    //         "amagitakayosi",
+    //         &hashmap! {"user.fields" => "id,name,username,location"},
+    //     )
+    //     .await;
 
-    // Show user's home timeline
-    // let timeline = twit.get_timeline(user.id).await;
-    // for tweet in timeline {
-    //     println!("{}", tweet.text);
-    // }
+    // // Show user profile
+    // // println!("{:?}", user);
 
-    // Get followers of the user
-    // let followers = twit.get_followers(&user.id).await;
+    // // Show user's home timeline
+    // // let timeline = twit.get_timeline(user.id).await;
+    // // for tweet in timeline {
+    // //     println!("{}", tweet.text);
+    // // }
+
+    // // Get followers of the user
+    // // let followers = twit.get_followers(&user.id).await;
+    // // let followers_json = serde_json::to_string(&followers)?;
+    // // let mut file = File::create("followers.json")?;
+    // // file.write_all(followers_json.as_bytes())?;
+
+    // // Get following users
+    // let followers = twit.get_following(&user.id).await;
     // let followers_json = serde_json::to_string(&followers)?;
-    // let mut file = File::create("followers.json")?;
+    // let mut file = File::create("following.json")?;
     // file.write_all(followers_json.as_bytes())?;
-
-    // Get following users
-    let followers = twit.get_following(&user.id).await;
-    let followers_json = serde_json::to_string(&followers)?;
-    let mut file = File::create("following.json")?;
-    file.write_all(followers_json.as_bytes())?;
 
     // Read followers from JSON
     // let mut file = File::open("followers.json")?;
@@ -303,4 +316,55 @@ async fn main() -> Result<()> {
     // print_users_in_location(&followers, Regex::new("大阪")?);
 
     Ok(())
+}
+
+fn initialize_app() -> App<'static> {
+    App::new("follower-search")
+        .version("0.0.0")
+        .author("AMAGI")
+        .about("Find twitter friends around you")
+        .subcommand(
+            SubCommand::with_name("follower")
+                .about("Get your followers and save to a JSON file")
+                .arg(
+                    Arg::with_name("name")
+                        .help("Account name to find followers")
+                        .takes_value(true)
+                        .required(true),
+                ),
+        )
+        .subcommand(
+            SubCommand::with_name("following")
+                .about("Get users you follow and save to a JSON file")
+                .arg(
+                    Arg::with_name("name")
+                        .help("Account name to find following users")
+                        .takes_value(true)
+                        .required(true),
+                ),
+        )
+        .subcommand(
+            SubCommand::with_name("list")
+                .about("Get users you follow and save to a JSON file")
+                .arg(
+                    Arg::with_name("follower")
+                        .help("JSON file of users following you")
+                        .takes_value(true)
+                        .required(true)
+                        .index(1),
+                )
+                .arg(
+                    Arg::with_name("following")
+                        .help("JSON file of users you follow")
+                        .takes_value(true)
+                        .required(true)
+                        .index(2),
+                )
+                .arg(
+                    Arg::with_name("pattern")
+                        .help("Pattern to filter user location")
+                        .takes_value(true)
+                        .required(true),
+                ),
+        )
 }

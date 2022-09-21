@@ -19,4 +19,4 @@ base64 = "0.12.3"
 maplit = "1.0.2"
 colored = "2"
 regex = "1"
-
+clap = { version = "3.0", features = ["derive"] }
