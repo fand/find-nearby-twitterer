@@ -208,6 +208,16 @@ impl Twit {
         )
         .await
     }
+
+    pub async fn get_following(&self, user_id: &String) -> Vec<UserJSON> {
+        let url_string = format!("https://api.twitter.com/2/users/{}/following", user_id);
+        self.fetch_json_all::<UserJSON>(
+            "GET",
+            &url_string,
+            &hashmap! { "max_results" => "1000", "user.fields" => "id,name,username,location,description" },
+        )
+        .await
+    }
 }
 
 fn print_users_in_location(followers: &Vec<UserJSON>, location: Regex) {
@@ -248,13 +258,14 @@ async fn main() -> Result<()> {
         env("TWITTER_ACCESS_TOKEN_SECRET"),
     );
 
+    let user = twit
+        .get_user(
+            "amagitakayosi",
+            &hashmap! {"user.fields" => "id,name,username,location"},
+        )
+        .await;
+
     // Show user profile
-    // let user = twit
-    //     .get_user(
-    //         "amagitakayosi",
-    //         &hashmap! {"user.fields" => "id,name,username,location"},
-    //     )
-    //     .await;
     // println!("{:?}", user);
 
     // Show user's home timeline
@@ -269,21 +280,27 @@ async fn main() -> Result<()> {
     // let mut file = File::create("followers.json")?;
     // file.write_all(followers_json.as_bytes())?;
 
-    // Read followers from JSON
-    let mut file = File::open("followers.json")?;
-    let mut contents = String::new();
-    file.read_to_string(&mut contents)?;
-    let followers: Vec<UserJSON> = serde_json::from_str(&contents)?;
-    println!(">> Followers: {}", followers.len());
+    // Get following users
+    let followers = twit.get_following(&user.id).await;
+    let followers_json = serde_json::to_string(&followers)?;
+    let mut file = File::create("following.json")?;
+    file.write_all(followers_json.as_bytes())?;
 
-    println!("");
-    print_users_in_location(&followers, Regex::new("kyoto")?);
-    println!("");
-    print_users_in_location(&followers, Regex::new("osaka")?);
-    println!("");
-    print_users_in_location(&followers, Regex::new("[^東]京都")?);
-    println!("");
-    print_users_in_location(&followers, Regex::new("大阪")?);
+    // Read followers from JSON
+    // let mut file = File::open("followers.json")?;
+    // let mut contents = String::new();
+    // file.read_to_string(&mut contents)?;
+    // let followers: Vec<UserJSON> = serde_json::from_str(&contents)?;
+    // println!(">> Followers: {}", followers.len());
+
+    // println!("");
+    // print_users_in_location(&followers, Regex::new("kyoto")?);
+    // println!("");
+    // print_users_in_location(&followers, Regex::new("osaka")?);
+    // println!("");
+    // print_users_in_location(&followers, Regex::new("[^東]京都")?);
+    // println!("");
+    // print_users_in_location(&followers, Regex::new("大阪")?);
 
     Ok(())
 }
