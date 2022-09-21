@@ -17,6 +17,7 @@ use std::collections::HashMap;
 #[macro_use]
 extern crate maplit;
 
+use colored::*;
 use tokio::time::{sleep, Duration};
 
 mod auth;
@@ -223,13 +224,17 @@ fn print_users_in_location(followers: &Vec<UserJSON>, location: &str) {
         })
         .collect();
 
-    println!(">> Followers in '{}': {}", location, followers.len());
+    println!(
+        ">> Followers in '{}': {}",
+        location.green(),
+        followers.len()
+    );
     for f in &followers {
         println!(
             "{} (@{}): {}",
-            f.name,
-            f.username,
-            f.location.as_ref().unwrap_or(&String::new())
+            f.name.green().bold(),
+            f.username.bright_black(),
+            f.location.as_ref().unwrap_or(&String::new()).bright_blue()
         );
     }
 }
@@ -245,14 +250,14 @@ fn print_users_in_location_in_description(followers: &Vec<UserJSON>, pattern: &s
 
     println!(
         ">> Followers matching pattern '{}': {}",
-        pattern,
+        pattern.green(),
         followers.len()
     );
     for f in &followers {
         println!(
             "{} (@{}): {:?}",
-            f.name,
-            f.username,
+            f.name.red().bold(),
+            f.username.bright_black(),
             f.description.as_ref().unwrap_or(&"".to_string())
         );
     }
