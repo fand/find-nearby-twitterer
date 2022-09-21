@@ -1,23 +1,18 @@
-use anyhow::Result;
-
+#[macro_use]
+extern crate maplit;
 extern crate reqwest;
+use anyhow::Result;
+use async_recursion::async_recursion;
+use colored::*;
+use regex::Regex;
 use reqwest::{header::AUTHORIZATION, Url};
 use reqwest::{Client, Response};
-
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json;
-
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::prelude::*;
-
-use async_recursion::async_recursion;
-
-use std::collections::HashMap;
-#[macro_use]
-extern crate maplit;
-
-use colored::*;
 use tokio::time::{sleep, Duration};
 
 mod auth;
@@ -215,18 +210,18 @@ impl Twit {
     }
 }
 
-fn print_users_in_location(followers: &Vec<UserJSON>, location: &str) {
+fn print_users_in_location(followers: &Vec<UserJSON>, location: Regex) {
     let followers: Vec<&UserJSON> = followers
         .iter()
         .filter(|f| match &f.location {
-            Some(loc) => loc.to_lowercase().contains(location),
+            Some(loc) => location.is_match(loc.to_lowercase().as_str()),
             _ => false,
         })
         .collect();
 
     println!(
         ">> Followers in '{}': {}",
-        location.green(),
+        location.as_str().green(),
         followers.len()
     );
     for f in &followers {
@@ -235,30 +230,6 @@ fn print_users_in_location(followers: &Vec<UserJSON>, location: &str) {
             f.name.green().bold(),
             f.username.bright_black(),
             f.location.as_ref().unwrap_or(&String::new()).bright_blue()
-        );
-    }
-}
-
-fn print_users_in_location_in_description(followers: &Vec<UserJSON>, pattern: &str) {
-    let followers: Vec<&UserJSON> = followers
-        .iter()
-        .filter(|f| match &f.description {
-            Some(desc) => desc.to_lowercase().contains(pattern),
-            _ => false,
-        })
-        .collect();
-
-    println!(
-        ">> Followers matching pattern '{}': {}",
-        pattern.green(),
-        followers.len()
-    );
-    for f in &followers {
-        println!(
-            "{} (@{}): {:?}",
-            f.name.red().bold(),
-            f.username.bright_black(),
-            f.description.as_ref().unwrap_or(&"".to_string())
         );
     }
 }
@@ -291,12 +262,6 @@ async fn main() -> Result<()> {
     // let mut file = File::create("followers.json")?;
     // file.write_all(followers_json.as_bytes())?;
 
-    // let v: Vec<i32> = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-    // let v2: Vec<&i32> = v.iter().filter(|&x| x % 2 == 0).collect();
-    // for x in &v2 {
-    //     println!("{}", x);
-    // }
-
     // Read followers from JSON
     let mut file = File::open("followers.json")?;
     let mut contents = String::new();
@@ -305,18 +270,13 @@ async fn main() -> Result<()> {
     println!(">> Followers: {}", followers.len());
 
     println!("");
-    print_users_in_location(&followers, "kyoto");
+    print_users_in_location(&followers, Regex::new("kyoto")?);
     println!("");
-    print_users_in_location(&followers, "osaka");
+    print_users_in_location(&followers, Regex::new("osaka")?);
     println!("");
-    print_users_in_location(&followers, "京都");
+    print_users_in_location(&followers, Regex::new("[^東]京都")?);
     println!("");
-    print_users_in_location(&followers, "大阪");
-
-    // println!("");
-    // print_users_in_location_in_description(&followers, "kyoto");
-    // println!("");
-    // print_users_in_location_in_description(&followers, "osaka");
+    print_users_in_location(&followers, Regex::new("大阪")?);
 
     Ok(())
 }
