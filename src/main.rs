@@ -11,14 +11,14 @@ use reqwest::{Client, Response};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::prelude::*;
 use tokio::time::{sleep, Duration};
 
 mod auth;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct UserJSON {
     id: String,
     name: String,
@@ -28,9 +28,29 @@ struct UserJSON {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
+struct TimelineJSON {
+    data: Vec<TimelineTweetJSON>,
+    includes: TimelineIncludeJSON,
+    meta: Option<MetaJSON>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct TimelineIncludeJSON {
+    users: Vec<UserJSON>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 struct TimelineTweetJSON {
     id: String,
     text: String,
+    author_id: String,
+}
+
+#[derive(Debug)]
+struct TimelineTweetDisplay {
+    id: String,
+    text: String,
+    author: UserJSON,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -189,15 +209,32 @@ impl Twit {
         res.data
     }
 
-    pub async fn get_timeline(&self, user_id: String) -> Vec<TimelineTweetJSON> {
+    pub async fn get_timeline<'a>(
+        &self,
+        user_id: String,
+    ) -> (Vec<TimelineTweetJSON>, HashMap<String, UserJSON>) {
         let url_string = format!(
             "https://api.twitter.com/2/users/{}/timelines/reverse_chronological",
             user_id
         );
-        let res = self
-            .fetch_json::<DataJSON<Vec<TimelineTweetJSON>>>("GET", &url_string, &HashMap::new())
+
+        let res_json = self
+            .fetch_text(
+                "GET",
+                &url_string,
+                &hashmap! {
+                "expansions"=>"author_id",
+                "user.fields" => "id,name,username" },
+            )
             .await;
-        res.data
+        let res: TimelineJSON = serde_json::from_str(&res_json).unwrap();
+
+        let mut usermap = HashMap::new();
+        for user in &res.includes.users {
+            usermap.insert(user.id.clone(), user.clone());
+        }
+
+        (res.data, usermap)
     }
 
     pub async fn get_followers(&self, user_id: &String) -> Vec<UserJSON> {
@@ -254,83 +291,151 @@ fn env(key: &str) -> String {
 async fn main() -> Result<()> {
     let app = initialize_app();
     let matches = app.get_matches();
-    if let Some(matches) = matches.subcommand_matches("following") {
-        println!("following {:?}", matches);
+
+    let twit = Twit::new(
+        env("TWITTER_API_KEY"),
+        env("TWITTER_ACCESS_TOKEN"),
+        env("TWITTER_API_KEY_SECRET"),
+        env("TWITTER_ACCESS_TOKEN_SECRET"),
+    );
+
+    if let Some(matches) = matches.subcommand_matches("user") {
+        // Show user profile
+        let username = matches.value_of("name").unwrap();
+        let user = twit
+            .get_user(
+                username,
+                &hashmap! {"user.fields" => "id,name,username,location,description"},
+            )
+            .await;
+        println!("{:?}", user);
+    } else if let Some(matches) = matches.subcommand_matches("timeline") {
+        // Show user's home timeline
+        let username = matches.value_of("name").unwrap();
+        let user = twit
+            .get_user(username, &hashmap! {"user.fields" => "id"})
+            .await;
+
+        let (tweets, usermap) = twit.get_timeline(user.id).await;
+        for tweet in tweets {
+            let user = usermap.get(&tweet.author_id).unwrap();
+            println!(
+                "{} {}: {}\n",
+                user.name.green().bold(),
+                format!("@{}", user.username).bright_black(),
+                tweet.text.bright_blue()
+            );
+        }
+    } else if let Some(matches) = matches.subcommand_matches("following") {
+        let username = matches.value_of("name").unwrap();
+
+        // Get following users
+        let user = twit
+            .get_user(
+                "amagitakayosi",
+                &hashmap! {"user.fields" => "id,name,username,location"},
+            )
+            .await;
+
+        let followers = twit.get_following(&user.id).await;
+        let followers_json = serde_json::to_string(&followers)?;
+        let mut file = File::create("following.json")?;
+        file.write_all(followers_json.as_bytes())?;
+    } else if let Some(matches) = matches.subcommand_matches("followers") {
+        // Get followers of the user
+        let user = twit
+            .get_user(
+                "amagitakayosi",
+                &hashmap! {"user.fields" => "id,name,username,location"},
+            )
+            .await;
+
+        let followers = twit.get_followers(&user.id).await;
+        let followers_json = serde_json::to_string(&followers)?;
+        let mut file = File::create("followers.json")?;
+        file.write_all(followers_json.as_bytes())?;
+    } else if let Some(matches) = matches.subcommand_matches("list") {
+        let followers_path = matches.value_of("followers").unwrap();
+        let following_path = matches.value_of("following").unwrap();
+        let patterns = matches.values_of("pattern").unwrap();
+
+        // Read followers from JSON
+        let mut file = File::open(followers_path)?;
+        let mut contents = String::new();
+        file.read_to_string(&mut contents)?;
+        let followers: Vec<UserJSON> = serde_json::from_str(&contents)?;
+        println!(">> Followers: {}", followers.len());
+
+        // Read following users from JSON
+        let mut file = File::open(following_path)?;
+        let mut contents = String::new();
+        file.read_to_string(&mut contents)?;
+        let following: Vec<UserJSON> = serde_json::from_str(&contents)?;
+        println!(">> Following: {}", following.len());
+
+        // Get users listed both on follows and following.
+        let followers_ids: HashSet<String> = followers.iter().map(|f| f.id.clone()).collect();
+        let users: Vec<UserJSON> = following
+            .into_iter()
+            .filter(|f| followers_ids.contains(&f.id))
+            .collect();
+        println!(">> Mutual: {}", users.len());
+
+        for pattern in patterns {
+            println!("");
+            print_users_in_location(&users, Regex::new(pattern)?);
+            println!("");
+        }
     }
-    if let Some(matches) = matches.subcommand_matches("follower") {
-        println!("follower {:?}", matches);
-    }
-    if let Some(matches) = matches.subcommand_matches("list") {
-        println!("list {:?}", matches);
-    }
-
-    // let twit = Twit::new(
-    //     env("TWITTER_API_KEY"),
-    //     env("TWITTER_ACCESS_TOKEN"),
-    //     env("TWITTER_API_KEY_SECRET"),
-    //     env("TWITTER_ACCESS_TOKEN_SECRET"),
-    // );
-
-    // let user = twit
-    //     .get_user(
-    //         "amagitakayosi",
-    //         &hashmap! {"user.fields" => "id,name,username,location"},
-    //     )
-    //     .await;
-
-    // // Show user profile
-    // // println!("{:?}", user);
-
-    // // Show user's home timeline
-    // // let timeline = twit.get_timeline(user.id).await;
-    // // for tweet in timeline {
-    // //     println!("{}", tweet.text);
-    // // }
-
-    // // Get followers of the user
-    // // let followers = twit.get_followers(&user.id).await;
-    // // let followers_json = serde_json::to_string(&followers)?;
-    // // let mut file = File::create("followers.json")?;
-    // // file.write_all(followers_json.as_bytes())?;
-
-    // // Get following users
-    // let followers = twit.get_following(&user.id).await;
-    // let followers_json = serde_json::to_string(&followers)?;
-    // let mut file = File::create("following.json")?;
-    // file.write_all(followers_json.as_bytes())?;
-
-    // Read followers from JSON
-    // let mut file = File::open("followers.json")?;
-    // let mut contents = String::new();
-    // file.read_to_string(&mut contents)?;
-    // let followers: Vec<UserJSON> = serde_json::from_str(&contents)?;
-    // println!(">> Followers: {}", followers.len());
-
-    // println!("");
-    // print_users_in_location(&followers, Regex::new("kyoto")?);
-    // println!("");
-    // print_users_in_location(&followers, Regex::new("osaka")?);
-    // println!("");
-    // print_users_in_location(&followers, Regex::new("[^東]京都")?);
-    // println!("");
-    // print_users_in_location(&followers, Regex::new("大阪")?);
 
     Ok(())
 }
 
 fn initialize_app() -> App<'static> {
-    App::new("follower-search")
-        .version("0.0.0")
+    App::new("find-nearby-twitterer")
+        .version("0.1.0")
         .author("AMAGI")
-        .about("Find twitter friends around you")
+        .about("Find twitter friends living nearby")
         .subcommand(
-            SubCommand::with_name("follower")
+            SubCommand::with_name("user")
+                .about("Show account info")
+                .arg(
+                    Arg::with_name("name")
+                        .help("Account name to see info")
+                        .takes_value(true)
+                        .required(true)
+                        .index(1),
+                ),
+        )
+        .subcommand(
+            SubCommand::with_name("timeline")
+                .about("Show home timeline for the user")
+                .arg(
+                    Arg::with_name("name")
+                        .help("Account name to show the timeline")
+                        .takes_value(true)
+                        .required(true)
+                        .index(1),
+                ),
+        )
+        .subcommand(
+            SubCommand::with_name("followers")
                 .about("Get your followers and save to a JSON file")
                 .arg(
                     Arg::with_name("name")
                         .help("Account name to find followers")
                         .takes_value(true)
-                        .required(true),
+                        .required(true)
+                        .index(1),
+                )
+                .arg(
+                    Arg::with_name("filename")
+                        .help("Output JSON filename")
+                        .takes_value(true)
+                        .required(true)
+                        .name("output")
+                        .short('o')
+                        .default_value("followers.json"),
                 ),
         )
         .subcommand(
@@ -340,14 +445,24 @@ fn initialize_app() -> App<'static> {
                     Arg::with_name("name")
                         .help("Account name to find following users")
                         .takes_value(true)
-                        .required(true),
+                        .required(true)
+                        .index(1),
+                )
+                .arg(
+                    Arg::with_name("filename")
+                        .help("Output JSON filename")
+                        .takes_value(true)
+                        .required(true)
+                        .name("output")
+                        .short('o')
+                        .default_value("following.json"),
                 ),
         )
         .subcommand(
             SubCommand::with_name("list")
                 .about("Get users you follow and save to a JSON file")
                 .arg(
-                    Arg::with_name("follower")
+                    Arg::with_name("followers")
                         .help("JSON file of users following you")
                         .takes_value(true)
                         .required(true)
@@ -364,6 +479,9 @@ fn initialize_app() -> App<'static> {
                     Arg::with_name("pattern")
                         .help("Pattern to filter user location")
                         .takes_value(true)
+                        .name("pattern")
+                        .short('p')
+                        .multiple(true)
                         .required(true),
                 ),
         )

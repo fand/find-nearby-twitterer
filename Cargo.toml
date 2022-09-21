@@ -1,5 +1,5 @@
 [package]
-name = "follower-sorter"
+name = "find-nearby-twitterer"
 version = "0.1.0"
 edition = "2021"
 
