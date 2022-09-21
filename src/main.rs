@@ -214,6 +214,50 @@ impl Twit {
     }
 }
 
+fn print_users_in_location(followers: &Vec<UserJSON>, location: &str) {
+    let followers: Vec<&UserJSON> = followers
+        .iter()
+        .filter(|f| match &f.location {
+            Some(loc) => loc.to_lowercase().contains(location),
+            _ => false,
+        })
+        .collect();
+
+    println!(">> Followers in '{}': {}", location, followers.len());
+    for f in &followers {
+        println!(
+            "{} (@{}): {}",
+            f.name,
+            f.username,
+            f.location.as_ref().unwrap_or(&String::new())
+        );
+    }
+}
+
+fn print_users_in_location_in_description(followers: &Vec<UserJSON>, pattern: &str) {
+    let followers: Vec<&UserJSON> = followers
+        .iter()
+        .filter(|f| match &f.description {
+            Some(desc) => desc.to_lowercase().contains(pattern),
+            _ => false,
+        })
+        .collect();
+
+    println!(
+        ">> Followers matching pattern '{}': {}",
+        pattern,
+        followers.len()
+    );
+    for f in &followers {
+        println!(
+            "{} (@{}): {:?}",
+            f.name,
+            f.username,
+            f.description.as_ref().unwrap_or(&"".to_string())
+        );
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let twit = Twit::new(
@@ -237,29 +281,37 @@ async fn main() -> Result<()> {
     // }
 
     // Get followers of the user
-    let followers = twit.get_followers(&user.id).await;
-    let followers_json = serde_json::to_string(&followers)?;
-    let mut file = File::create("followers2.json")?;
-    file.write_all(followers_json.as_bytes())?;
+    // let followers = twit.get_followers(&user.id).await;
+    // let followers_json = serde_json::to_string(&followers)?;
+    // let mut file = File::create("followers.json")?;
+    // file.write_all(followers_json.as_bytes())?;
+
+    // let v: Vec<i32> = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    // let v2: Vec<&i32> = v.iter().filter(|&x| x % 2 == 0).collect();
+    // for x in &v2 {
+    //     println!("{}", x);
+    // }
 
     // Read followers from JSON
-    // let mut file = File::open("followers.json")?;
-    // let mut contents = String::new();
-    // file.read_to_string(&mut contents)?;
-    // let followers: Vec<UserJSON> = serde_json::from_str(&contents)?;
+    let mut file = File::open("followers.json")?;
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)?;
+    let followers: Vec<UserJSON> = serde_json::from_str(&contents)?;
+    println!(">> Followers: {}", followers.len());
 
-    // for f in &followers {
-    //     let follower = twit
-    //         .get_user(
-    //             &f.username,
-    //             &hashmap! {"user.fields" => "id,name,username,location"},
-    //         )
-    //         .await;
-    //     println!("{:?}", follower.location);
+    println!("");
+    print_users_in_location(&followers, "kyoto");
+    println!("");
+    print_users_in_location(&followers, "osaka");
+    println!("");
+    print_users_in_location(&followers, "京都");
+    println!("");
+    print_users_in_location(&followers, "大阪");
 
-    //     sleep(Duration::from_millis(1100)).await;
-    // }
-    // println!("{}", contents);
+    // println!("");
+    // print_users_in_location_in_description(&followers, "kyoto");
+    // println!("");
+    // print_users_in_location_in_description(&followers, "osaka");
 
     Ok(())
 }
