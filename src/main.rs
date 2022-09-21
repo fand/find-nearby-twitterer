@@ -226,29 +226,36 @@ fn print_users_in_location(followers: &Vec<UserJSON>, location: Regex) {
     );
     for f in &followers {
         println!(
-            "{} (@{}): {}",
+            "{} (@{}): {} {}",
             f.name.green().bold(),
             f.username.bright_black(),
-            f.location.as_ref().unwrap_or(&String::new()).bright_blue()
+            f.location.as_ref().unwrap_or(&String::new()).bright_blue(),
+            format!("https://twitter.com/{}", f.username).bright_black(),
         );
     }
+}
+
+fn env(key: &str) -> String {
+    std::env::var(key).unwrap()
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let twit = Twit::new(
-        std::env::var("TWITTER_API_KEY").unwrap(),
-        std::env::var("TWITTER_ACCESS_TOKEN").unwrap(),
-        std::env::var("TWITTER_API_KEY_SECRET").unwrap(),
-        std::env::var("TWITTER_ACCESS_TOKEN_SECRET").unwrap(),
+        env("TWITTER_API_KEY"),
+        env("TWITTER_ACCESS_TOKEN"),
+        env("TWITTER_API_KEY_SECRET"),
+        env("TWITTER_ACCESS_TOKEN_SECRET"),
     );
-    let user = twit
-        .get_user(
-            "amagitakayosi",
-            &hashmap! {"user.fields" => "id,name,username,location"},
-        )
-        .await;
-    println!("{:?}", user);
+
+    // Show user profile
+    // let user = twit
+    //     .get_user(
+    //         "amagitakayosi",
+    //         &hashmap! {"user.fields" => "id,name,username,location"},
+    //     )
+    //     .await;
+    // println!("{:?}", user);
 
     // Show user's home timeline
     // let timeline = twit.get_timeline(user.id).await;
