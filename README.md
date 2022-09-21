@@ -22,3 +22,9 @@ export TWITTER_ACCESS_TOKEN_SECRET=XXXXXXXX
 ## License
 
 MIT
+
+
+## Thanks
+
+- https://qiita.com/hppRC/items/05a81b56d12d663d03e0
+- https://zenn.dev/bin_zsh/books/83ef64248646f18d246a
