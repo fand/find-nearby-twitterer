@@ -327,12 +327,11 @@ async fn main() -> Result<()> {
             );
         }
     } else if let Some(matches) = matches.subcommand_matches("following") {
-        let username = matches.value_of("name").unwrap();
-
         // Get following users
+        let username = matches.value_of("name").unwrap();
         let user = twit
             .get_user(
-                "amagitakayosi",
+                username,
                 &hashmap! {"user.fields" => "id,name,username,location"},
             )
             .await;
@@ -343,9 +342,10 @@ async fn main() -> Result<()> {
         file.write_all(followers_json.as_bytes())?;
     } else if let Some(matches) = matches.subcommand_matches("followers") {
         // Get followers of the user
+        let username = matches.value_of("name").unwrap();
         let user = twit
             .get_user(
-                "amagitakayosi",
+                username,
                 &hashmap! {"user.fields" => "id,name,username,location"},
             )
             .await;
