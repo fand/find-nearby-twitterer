@@ -10,7 +10,6 @@ use reqwest::{header::AUTHORIZATION, Url};
 use reqwest::{Client, Response};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use serde_json;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::prelude::*;
@@ -44,13 +43,6 @@ struct TimelineTweetJSON {
     id: String,
     text: String,
     author_id: String,
-}
-
-#[derive(Debug)]
-struct TimelineTweetDisplay {
-    id: String,
-    text: String,
-    author: UserJSON,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -88,23 +80,18 @@ impl Twit {
         }
     }
 
-    async fn fetch(
-        &self,
-        method: &str,
-        url_string: &String,
-        body: &HashMap<&str, &str>,
-    ) -> Response {
+    async fn fetch(&self, method: &str, url_string: &str, body: &HashMap<&str, &str>) -> Response {
         let signature = auth::make_signature(
-            url_string.as_str(),
+            url_string,
             method,
             &self.api_key,
             &self.api_key_secret,
             &self.access_token,
             &self.access_token_secret,
-            &body,
+            body,
         );
 
-        let url = Url::parse(&url_string).unwrap();
+        let url = Url::parse(url_string).unwrap();
         let client = Client::new()
             .get(url)
             .header(AUTHORIZATION, &signature.auth_header)
@@ -113,12 +100,7 @@ impl Twit {
         client.send().await.unwrap()
     }
 
-    async fn fetch_json<T>(
-        &self,
-        method: &str,
-        url_string: &String,
-        body: &HashMap<&str, &str>,
-    ) -> T
+    async fn fetch_json<T>(&self, method: &str, url_string: &str, body: &HashMap<&str, &str>) -> T
     where
         T: DeserializeOwned,
     {
@@ -132,7 +114,7 @@ impl Twit {
     async fn fetch_text(
         &self,
         method: &str,
-        url_string: &String,
+        url_string: &str,
         body: &HashMap<&str, &str>,
     ) -> String {
         self.fetch(method, url_string, body)
@@ -156,7 +138,7 @@ impl Twit {
         let mut body_with_token = body.clone();
         if let Some(k) = pagenation_token {
             println!("pagenation token: {}", k);
-            body_with_token.insert("pagination_token", &k);
+            body_with_token.insert("pagination_token", k);
         }
 
         let res_json = self
@@ -258,7 +240,7 @@ impl Twit {
     }
 }
 
-fn print_users_in_location(followers: &Vec<UserJSON>, location: Regex) {
+fn print_users_in_location(followers: &[UserJSON], location: Regex) {
     let followers: Vec<&UserJSON> = followers
         .iter()
         .filter(|f| match &f.location {
@@ -327,12 +309,11 @@ async fn main() -> Result<()> {
             );
         }
     } else if let Some(matches) = matches.subcommand_matches("following") {
-        let username = matches.value_of("name").unwrap();
-
         // Get following users
+        let username = matches.value_of("name").unwrap();
         let user = twit
             .get_user(
-                "amagitakayosi",
+                username,
                 &hashmap! {"user.fields" => "id,name,username,location"},
             )
             .await;
@@ -343,9 +324,10 @@ async fn main() -> Result<()> {
         file.write_all(followers_json.as_bytes())?;
     } else if let Some(matches) = matches.subcommand_matches("followers") {
         // Get followers of the user
+        let username = matches.value_of("name").unwrap();
         let user = twit
             .get_user(
-                "amagitakayosi",
+                username,
                 &hashmap! {"user.fields" => "id,name,username,location"},
             )
             .await;
@@ -382,9 +364,9 @@ async fn main() -> Result<()> {
         println!(">> Mutual: {}", users.len());
 
         for pattern in patterns {
-            println!("");
+            println!();
             print_users_in_location(&users, Regex::new(pattern)?);
-            println!("");
+            println!();
         }
     }
 
